@@ -10,6 +10,8 @@ import {
   useRef,
   useState
 } from 'react';
+import data from '@emoji-mart/data';
+import Picker from '@emoji-mart/react';
 import * as commands from '@uiw/react-md-editor/commands';
 import { useUser } from '@smart-signer/lib/auth/use-user';
 import { Signer } from '@smart-signer/lib/signer/signer';
@@ -23,6 +25,7 @@ import imageUserBlocklist from '@ui/config/lists/image-user-blocklist';
 import { cn } from '@ui/lib/utils';
 import { useSignerContext } from '@smart-signer/components/signer-provider';
 import { Button } from '@ui/components';
+import { Icons } from '@ui/components/icons';
 
 const logger = getLogger('app');
 
@@ -60,14 +63,15 @@ const uploadImg = async (file: File, username: string, signer: Signer): Promise<
     }
 
     data = await data;
-    const prefix = Buffer.from('ImageSigningChallenge');
-    const buf = Buffer.concat([prefix, data as unknown as Uint8Array]);
+    const prefix = new TextEncoder().encode('ImageSigningChallenge');
+    const dataArray = new Uint8Array(data as ArrayBuffer);
+    const buf = Buffer.from(new Uint8Array([...prefix, ...dataArray]));
 
     const sig = await signer.signChallenge({
       message: buf,
       password: ''
     });
-    
+
     const imageOwner = signer.authorityUsername || signer.username;
 
     const postUrl = `${configuredImagesEndpoint}${imageOwner}/${sig}`;
@@ -157,6 +161,7 @@ const MdEditor: FC<MdEditorProps> = ({ onChange, persistedValue = '', placeholde
   const textApiRef = useRef<TextAreaTextApi>(null) as MutableRefObject<TextAreaTextApi>;
   const [isDrag, setIsDrag] = useState(false);
   const [insertImg, setInsertImg] = useState('');
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   useEffect(() => {
     onChange(formValue);
@@ -242,6 +247,53 @@ const MdEditor: FC<MdEditorProps> = ({ onChange, persistedValue = '', placeholde
     }
   });
 
+  const emojiBtn = (): commands.ICommand => ({
+    name: "Add Emoji",
+    keyCommand: "emoji",
+    render: (
+      command: commands.ICommand,
+      disabled: boolean | undefined,
+      executeCommand: (
+        arg0: commands.ICommand<string>,
+        arg1: string | undefined
+      ) => void
+    ) => {
+      return (
+        <div className="relative">
+          <Button
+            type="button"
+            variant="basic"
+            onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+            disabled={disabled}
+            data-testid="emoji-picker-button"
+          >
+            😊
+          </Button>
+          {showEmojiPicker && (
+            <div className="absolute z-50 top-full mt-1">
+              <Picker
+                data={data}
+                onEmojiSelect={(emoji: any) => {
+                  executeCommand({ ...command, value: emoji.native }, command.groupName);
+                  setShowEmojiPicker(false);
+                }}
+                theme="light"
+              />
+            </div>
+          )}
+        </div>
+      );
+    },
+    execute: (state: commands.ExecuteState, api: TextAreaTextApi) => {
+      const emoji = state.command?.value || "😊";
+      const newState = api.replaceSelection(emoji);
+      api.setSelectionRange({
+        start: newState.selection.end,
+        end: newState.selection.end,
+      });
+    },
+  });
+
   const spoilerBtn = (): commands.ICommand => ({
     name: "Add Spoiler",
     keyCommand: "spoiler",
@@ -289,42 +341,46 @@ const MdEditor: FC<MdEditorProps> = ({ onChange, persistedValue = '', placeholde
       />
       <div className="relative">
         <div>
-          <MDEditor
-            ref={editorRef}
-            preview="edit"
-            value={formValue}
-            aria-placeholder={placeholder ?? ''}
-            onChange={(value) => {
-              setFormValue(value || '');
-            }}
-            commands={[...(commands.getCommands() as ICommand[]), imgBtn(inputRef), spoilerBtn()]}
-            extraCommands={[]}
-            className={cn({ '!bg-red-400 !bg-opacity-20': isDrag })}
-            onDrop={dropHandler}
-            onDragEnter={dragHandler}
-            onDragOver={dragHandler}
-            onDragLeave={dragHandler}
-            height={windowheight}
-            //@ts-ignore
-            style={{ '--color-canvas-default': 'var(--background)' }}
-          />
+          <>
+            <MDEditor
+              ref={editorRef}
+              preview="edit"
+              value={formValue}
+              aria-placeholder={placeholder ?? ''}
+              onChange={(value) => {
+                setFormValue(value || '');
+              }}
+              commands={[...(commands.getCommands() as ICommand[]), imgBtn(inputRef), emojiBtn(), spoilerBtn()]}
+              extraCommands={[]}
+              className={cn({ '!bg-red-400 !bg-opacity-20': isDrag })}
+              onDrop={dropHandler}
+              onDragEnter={dragHandler}
+              onDragOver={dragHandler}
+              onDragLeave={dragHandler}
+              height={windowheight}
+              //@ts-ignore
+              style={{ '--color-canvas-default': 'var(--background)' }}
+            />
+          </>
         </div>
       </div>
     </div>
   ) : (
-    <MDEditor
-      height={windowheight}
-      preview="edit"
-      value={formValue}
-      aria-placeholder={placeholder ?? ''}
-      onChange={(value) => {
-        setFormValue(value || '');
-      }}
-      commands={[...(commands.getCommands() as ICommand[]), imgBtn(inputRef), spoilerBtn()]}
-      extraCommands={[]}
-      //@ts-ignore
-      style={{ '--color-canvas-default': 'var(--background)' }}
-    />
+    <>
+      <MDEditor
+        height={windowheight}
+        preview="edit"
+        value={formValue}
+        aria-placeholder={placeholder ?? ''}
+        onChange={(value) => {
+          setFormValue(value || '');
+        }}
+        commands={[...(commands.getCommands() as ICommand[]), imgBtn(inputRef), emojiBtn(), spoilerBtn()]}
+        extraCommands={[]}
+        //@ts-ignore
+        style={{ '--color-canvas-default': 'var(--background)' }}
+      />
+    </>
   );
 };
 
